@@ -24,6 +24,14 @@ import {
   type LeadQa,
 } from "@shared/qualify";
 import { twilioLookup, twilioConfigured, normalizePhone } from "../_core/twilio";
+import {
+  apifyConfigured,
+  startBbbRun,
+  getRun,
+  getDatasetItems,
+  mapBbbItemToRow,
+  BBB_HEADERS,
+} from "../_core/apify";
 
 // Tolerant enum: accepts "" / null / undefined and maps to the chosen default.
 // Several UI toggles emit "" when the user deselects an option. Without this,
@@ -96,6 +104,76 @@ export const leadsRouter = router({
   twilioStatus: protectedProcedure.query(() => ({
     configured: twilioConfigured(),
   })),
+
+  scrapeStatus: protectedProcedure.query(() => ({
+    configured: apifyConfigured(),
+  })),
+
+  // Kick off a BBB scrape. Returns a run reference the client polls. We start
+  // async (not run-sync) because a scrape can outlast the serverless timeout.
+  scrapeBbbStart: protectedProcedure
+    .input(
+      z.object({
+        search: z.string().trim().min(1).max(120),
+        location: z.string().trim().min(1).max(120),
+        distance: z.number().int().min(1).max(100).optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      if (!apifyConfigured()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Apify is not configured." });
+      }
+      try {
+        const run = await startBbbRun(input);
+        return { runId: run.runId, datasetId: run.datasetId, status: run.status };
+      } catch (e: any) {
+        throw new TRPCError({ code: "BAD_GATEWAY", message: e?.message || "Scrape failed to start." });
+      }
+    }),
+
+  // Poll a running scrape. Returns the Apify run status string.
+  scrapeBbbPoll: protectedProcedure
+    .input(z.object({ runId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      if (!apifyConfigured()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Apify is not configured." });
+      }
+      const run = await getRun(input.runId);
+      return { status: run.status, datasetId: run.datasetId };
+    }),
+
+  // Pull results from a finished scrape and import them as a new session,
+  // capped at `max` rows. Mirrors the CSV upload path so downstream tooling
+  // (dedup, Twilio, export) works unchanged.
+  scrapeBbbImport: protectedProcedure
+    .input(
+      z.object({
+        datasetId: z.string().min(1),
+        max: z.number().int().min(1).max(1000),
+        fileName: z.string().max(512),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!apifyConfigured()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Apify is not configured." });
+      }
+      const items = await getDatasetItems(input.datasetId, input.max);
+      const rows = items
+        .map(mapBbbItemToRow)
+        .filter((r) => r["Company Name"] || r.Phone);
+      const sessionId = await createSession({
+        ownerOpenId: ctx.user.openId,
+        fileName: input.fileName,
+        headers: [...BBB_HEADERS],
+        leadCount: rows.length,
+      });
+      if (rows.length) {
+        await bulkInsertLeads(
+          rows.map((raw, idx) => ({ sessionId, position: idx, raw, qa: defaultQa() })),
+        );
+      }
+      return { sessionId, imported: rows.length };
+    }),
 
   listSessions: protectedProcedure.query(async ({ ctx }) => {
     return listSessions(ctx.user.openId);

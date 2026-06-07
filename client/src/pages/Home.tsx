@@ -11,9 +11,10 @@ import { QualifyPanel } from "@/components/qualifier/QualifyPanel";
 import { Dropzone } from "@/components/qualifier/Dropzone";
 import { ExportBar } from "@/components/qualifier/ExportBar";
 import { SessionPicker } from "@/components/qualifier/SessionPicker";
+import { ScrapeModal } from "@/components/qualifier/ScrapeModal";
 import { FILTER_CHIPS } from "@shared/qualify";
 import { toast } from "sonner";
-import { Loader2, Menu, ScanSearch, Copy as CopyIcon, ShieldCheck, LogIn, X } from "lucide-react";
+import { Loader2, Menu, ScanSearch, Copy as CopyIcon, ShieldCheck, LogIn, LogOut, Globe, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type FilterValue = (typeof FILTER_CHIPS)[number];
@@ -32,10 +33,12 @@ export default function Home() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [mobileSidebar, setMobileSidebar] = useState(false);
+  const [scrapeOpen, setScrapeOpen] = useState(false);
 
   const { leads, fileName, headers, isLoading, patchQa, refetch, saveStatus, lastSavedAt, flushAll } = useLeads(sessionId);
 
   const twilioStatusQuery = trpc.leads.twilioStatus.useQuery(undefined, { enabled: isAuthenticated });
+  const scrapeStatusQuery = trpc.leads.scrapeStatus.useQuery(undefined, { enabled: isAuthenticated });
   const createSession = trpc.leads.createSession.useMutation();
   const twilioLookup = trpc.leads.twilioLookup.useMutation();
   const twilioBulk = trpc.leads.twilioBulkLookup.useMutation();
@@ -162,10 +165,11 @@ export default function Home() {
             const r = await twilioBulk.mutateAsync({ sessionId: res.sessionId });
             for (const p of r.patches || []) {
               const t = p.patch.phoneType;
+              // Mobile → SMS. VoIP + Landline → Call (texts unreliable on both).
               const autoTag: Partial<typeof p.patch> =
-                t === "Mobile" || t === "VoIP"
+                t === "Mobile"
                   ? { smsTag: true, status: "Qualified" }
-                  : t === "Landline"
+                  : t === "VoIP" || t === "Landline"
                     ? { callTag: true, status: "Qualified" }
                     : {};
               patchQa(p.leadId, { ...p.patch, ...autoTag });
@@ -314,10 +318,35 @@ export default function Home() {
         }}
       />
 
+      <ScrapeModal
+        open={scrapeOpen}
+        onClose={() => setScrapeOpen(false)}
+        onImported={(id) => {
+          setScrapeOpen(false);
+          setSessionId(id);
+          setCurrentLeadId(null);
+          setFilter("All");
+          setQuery("");
+        }}
+      />
+
       {!sessionId ? (
         <div>
           <TopBar user={user} exportBar={null} tools={null} onMenu={null} />
           <Dropzone onFile={handleFile} busy={uploadBusy} />
+          <div className="mx-auto mt-4 flex max-w-md flex-col items-center gap-2 px-4 text-center">
+            <div className="flex w-full items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" />
+            </div>
+            <button
+              onClick={() => setScrapeOpen(true)}
+              disabled={!scrapeStatusQuery.data?.configured}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/[0.06] text-sm font-bold transition hover:bg-white/10 active:scale-[0.98] disabled:opacity-40"
+            >
+              <Globe className="h-4 w-4" />
+              {scrapeStatusQuery.data?.configured ? "Scrape leads from BBB" : "BBB scraper not configured"}
+            </button>
+          </div>
         </div>
       ) : (
         <DashboardShell>
@@ -431,7 +460,13 @@ function TopBar({
           <Menu className="h-4 w-4" />
         </button>
       )}
-      <div className="mr-auto flex items-center gap-2">
+      <div className="mr-auto flex items-center gap-2.5">
+        <img
+          src="/logo.svg"
+          alt="Mavly"
+          className="h-9 w-9 rounded-xl shadow-[0_0_22px_rgba(30,136,255,0.35)]"
+        />
+        <span className="hidden text-sm font-black tracking-tight sm:inline">Mavly</span>
         <div className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wider text-emerald-300 sm:flex">
           <span className="relative grid h-1.5 w-1.5 place-items-center">
             <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-50" />
@@ -448,6 +483,13 @@ function TopBar({
         </span>
         <span className="max-w-[120px] truncate text-xs font-semibold">{user?.name || "User"}</span>
       </div>
+      <a
+        href="/api/logout"
+        title="Log out"
+        className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-muted-foreground transition hover:bg-white/10 hover:text-foreground"
+      >
+        <LogOut className="h-4 w-4" />
+      </a>
     </header>
   );
 }

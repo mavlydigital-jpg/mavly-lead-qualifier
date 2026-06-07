@@ -6,4 +6,5 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID ?? "",
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? "",
+  apifyToken: process.env.APIFY_TOKEN ?? "",
 };
