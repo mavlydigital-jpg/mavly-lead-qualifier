@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+# Force npm (repo uses package-lock.json). Stops Netlify auto-picking pnpm.
+[build.environment]
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# Official adapter: runs Next.js (App Router + tRPC API routes) as functions.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
