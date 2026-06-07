@@ -19,10 +19,11 @@ export function ScrapeModal({
   onClose: () => void;
   onImported: (sessionId: number) => void;
 }) {
-  const [search, setSearch] = useState("Kitchen Remodeling");
+  const [search, setSearch] = useState("Foundation Repair");
   const [location, setLocation] = useState("");
   const [distance, setDistance] = useState(10);
   const [max, setMax] = useState(100);
+  const [nicheOnly, setNicheOnly] = useState(true);
   const [phase, setPhase] = useState<Phase>("idle");
   const [runId, setRunId] = useState<string | null>(null);
   const [datasetId, setDatasetId] = useState<string | null>(null);
@@ -41,9 +42,13 @@ export function ScrapeModal({
     if (DONE.has(status) && datasetId) {
       setPhase("importing");
       importRun
-        .mutateAsync({ datasetId, max, fileName: `BBB · ${search} · ${location}` })
+        .mutateAsync({ datasetId, max, nicheOnly, fileName: `BBB · ${search} · ${location}` })
         .then((res) => {
-          toast.success(`Imported ${res.imported} BBB leads.`);
+          toast.success(
+            res.dropped
+              ? `Imported ${res.imported} foundation leads · dropped ${res.dropped} off-niche.`
+              : `Imported ${res.imported} BBB leads.`,
+          );
           reset();
           onImported(res.sessionId);
         })
@@ -117,10 +122,26 @@ export function ScrapeModal({
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Kitchen Remodeling"
+                placeholder="Foundation Repair"
                 className={inputCls}
               />
             </Field>
+            <div className="-mt-1 flex flex-wrap gap-2">
+              {["Foundation Repair", "Waterproofing", "Crawl Space Repair"].map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setSearch(k)}
+                  className={
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition " +
+                    (search === k
+                      ? "border-[#3BA3FF]/50 bg-[#1E88FF]/15 text-[#9fc8ff]"
+                      : "border-white/12 bg-white/[0.05] text-muted-foreground hover:bg-white/10")
+                  }
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
             <Field label="Location (city, state)">
               <input
                 value={location}
@@ -151,6 +172,20 @@ export function ScrapeModal({
                 />
               </Field>
             </div>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3">
+              <input
+                type="checkbox"
+                checked={nicheOnly}
+                onChange={(e) => setNicheOnly(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[#1E88FF]"
+              />
+              <span className="text-xs">
+                <span className="font-bold">Foundation niche only</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Keep foundation repair, waterproofing & crawl-space pros. Drop general contractors, home builders, painters, etc.
+                </span>
+              </span>
+            </label>
             <button
               onClick={run}
               className="mt-1 inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#1E88FF,#3BA3FF)] text-sm font-bold text-primary-foreground shadow-[0_16px_34px_rgba(30,136,255,0.28)] transition hover:brightness-110 active:scale-[0.98]"

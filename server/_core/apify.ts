@@ -65,6 +65,39 @@ export const BBB_HEADERS = [
   "Notes",
 ] as const;
 
+// Niche allowlist — keep only foundation repair / waterproofing / crawl space
+// businesses. A business qualifies if any of these terms appears in its
+// categories, name, or BBB type-of-business text. Plain "General Contractor",
+// "Home Builders", painters, etc. (with no niche term) get dropped.
+const NICHE_TERMS = [
+  "foundation",
+  "waterproof",
+  "crawl space",
+  "crawlspace",
+  "basement",
+  "pier",
+  "underpinning",
+  "helical",
+  "piling",
+  "slab",
+  "mudjack",
+  "slabjack",
+  "concrete leveling",
+  "concrete lifting",
+  "french drain",
+  "sump",
+  "structural repair",
+  "settlement",
+  "moisture",
+  "encapsulat",
+];
+
+export function matchesNiche(item: any): boolean {
+  const cats = Array.isArray(item?.categories) ? item.categories.join(" ") : "";
+  const haystack = `${item?.businessName || ""} ${item?.tobText || ""} ${cats}`.toLowerCase();
+  return NICHE_TERMS.some((t) => haystack.includes(t));
+}
+
 export function mapBbbItemToRow(item: any): Record<string, string> {
   const phone = Array.isArray(item?.phone) ? item.phone[0] : item?.phone || "";
   const categories = Array.isArray(item?.categories) ? item.categories.join(", ") : "";

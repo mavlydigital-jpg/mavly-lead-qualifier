@@ -30,6 +30,7 @@ import {
   getRun,
   getDatasetItems,
   mapBbbItemToRow,
+  matchesNiche,
   BBB_HEADERS,
 } from "../_core/apify";
 
@@ -151,14 +152,22 @@ export const leadsRouter = router({
         datasetId: z.string().min(1),
         max: z.number().int().min(1).max(1000),
         fileName: z.string().max(512),
+        // When true, keep only foundation/waterproofing/crawl-space businesses
+        // and drop general contractors, home builders, painters, etc.
+        nicheOnly: z.boolean().optional().default(true),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       if (!apifyConfigured()) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Apify is not configured." });
       }
-      const items = await getDatasetItems(input.datasetId, input.max);
-      const rows = items
+      // Pull extra items when filtering so we can still hit `max` keepers.
+      const fetchCount = input.nicheOnly ? Math.min(1000, input.max * 5) : input.max;
+      const items = await getDatasetItems(input.datasetId, fetchCount);
+      const kept = input.nicheOnly ? items.filter(matchesNiche) : items;
+      const dropped = items.length - kept.length;
+      const rows = kept
+        .slice(0, input.max)
         .map(mapBbbItemToRow)
         .filter((r) => r["Company Name"] || r.Phone);
       const sessionId = await createSession({
@@ -172,7 +181,7 @@ export const leadsRouter = router({
           rows.map((raw, idx) => ({ sessionId, position: idx, raw, qa: defaultQa() })),
         );
       }
-      return { sessionId, imported: rows.length };
+      return { sessionId, imported: rows.length, dropped };
     }),
 
   listSessions: protectedProcedure.query(async ({ ctx }) => {
