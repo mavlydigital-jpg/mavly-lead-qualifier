@@ -46,10 +46,14 @@ describe("export selectors", () => {
     expect(isSmsLead(removed)).toBe(false);
   });
 
-  it("call export includes any valid phone lead", () => {
+  it("call export is non-mobile valid leads only (mobile is strictly SMS)", () => {
     const landline = makeLead(2, { Phone: "5553334444" }, { phoneType: "Landline" });
+    const voip = makeLead(4, { Phone: "5557778888" }, { phoneType: "VoIP" });
+    const mobile = makeLead(5, { Phone: "5551112222" }, { phoneType: "Mobile" });
     const invalid = makeLead(3, { Phone: "5550000000" }, { phoneValid: "No" });
     expect(isCallLead(landline)).toBe(true);
+    expect(isCallLead(voip)).toBe(true);
+    expect(isCallLead(mobile)).toBe(false);
     expect(isCallLead(invalid)).toBe(false);
   });
 });

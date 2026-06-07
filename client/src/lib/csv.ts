@@ -264,7 +264,14 @@ function autoSmsEligible(lead: LeadRecord): boolean {
   return !lead.qa.removed && Boolean(leadPhone(lead)) && lead.qa.phoneValid !== "No" && lead.qa.phoneType === "Mobile";
 }
 function autoCallEligible(lead: LeadRecord): boolean {
-  return !lead.qa.removed && Boolean(leadPhone(lead)) && lead.qa.phoneValid !== "No";
+  // Mobile is strictly SMS — never route a mobile number into the call list.
+  // Call is for Landline / VoIP / Toll-free / Unknown only.
+  return (
+    !lead.qa.removed &&
+    Boolean(leadPhone(lead)) &&
+    lead.qa.phoneValid !== "No" &&
+    lead.qa.phoneType !== "Mobile"
+  );
 }
 
 // Manual override: when user has toggled either SMS or Call on the lead,
