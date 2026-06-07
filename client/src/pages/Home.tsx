@@ -379,6 +379,12 @@ export default function Home() {
               tools={
                 <>
                   <ToolButton
+                    onClick={() => setScrapeOpen(true)}
+                    disabled={!scrapeStatusQuery.data?.configured}
+                    icon={<Globe className="h-4 w-4" />}
+                    label="Scrape BBB"
+                  />
+                  <ToolButton
                     onClick={runTwilioBulk}
                     busy={twilioBulk.isPending}
                     disabled={!twilioConfigured}
@@ -401,7 +407,11 @@ export default function Home() {
                   <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 </div>
               ) : !leads.length ? (
-                <EmptySession onUpload={() => setSessionId(null)} />
+                <EmptySession
+                  onUpload={() => setSessionId(null)}
+                  onScrape={() => setScrapeOpen(true)}
+                  scrapeConfigured={Boolean(scrapeStatusQuery.data?.configured)}
+                />
               ) : currentLead ? (
                 <QualifyPanel
                   lead={currentLead}
@@ -522,17 +532,35 @@ function ToolButton({
   );
 }
 
-function EmptySession({ onUpload }: { onUpload: () => void }) {
+function EmptySession({
+  onUpload,
+  onScrape,
+  scrapeConfigured,
+}: {
+  onUpload: () => void;
+  onScrape: () => void;
+  scrapeConfigured: boolean;
+}) {
   return (
     <div className="grid h-[60vh] place-items-center text-center">
       <div>
         <p className="text-sm text-muted-foreground">This session has no leads.</p>
-        <button
-          onClick={onUpload}
-          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-bold text-primary-foreground"
-        >
-          Upload a CSV
-        </button>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+          <button
+            onClick={onUpload}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-bold text-primary-foreground"
+          >
+            Upload a CSV
+          </button>
+          <button
+            onClick={onScrape}
+            disabled={!scrapeConfigured}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-4 text-sm font-bold transition hover:bg-white/10 active:scale-[0.98] disabled:opacity-40"
+          >
+            <Globe className="h-4 w-4" />
+            {scrapeConfigured ? "Scrape from BBB" : "BBB not configured"}
+          </button>
+        </div>
       </div>
     </div>
   );
