@@ -70,7 +70,7 @@ export const BBB_HEADERS = [
 // businesses. A business qualifies if any of these terms appears in its
 // categories, name, or BBB type-of-business text. Plain "General Contractor",
 // "Home Builders", painters, etc. (with no niche term) get dropped.
-const NICHE_TERMS = [
+export const NICHE_TERMS = [
   "foundation",
   "waterproof",
   "crawl space",

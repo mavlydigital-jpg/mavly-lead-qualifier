@@ -33,6 +33,15 @@ import {
   matchesNiche,
   BBB_HEADERS,
 } from "../_core/apify";
+import {
+  outscraperConfigured,
+  startMapsRun,
+  getMapsRun,
+  normalizeStatus,
+  mapMapsItemToRow,
+  matchesNicheMaps,
+  MAPS_HEADERS,
+} from "../_core/outscraper";
 
 // Tolerant enum: accepts "" / null / undefined and maps to the chosen default.
 // Several UI toggles emit "" when the user deselects an option. Without this,
@@ -109,6 +118,99 @@ export const leadsRouter = router({
   scrapeStatus: protectedProcedure.query(() => ({
     configured: apifyConfigured(),
   })),
+
+  outscraperStatus: protectedProcedure.query(() => ({
+    configured: outscraperConfigured(),
+  })),
+
+  // Kick off an Outscraper Google Maps search. Returns a run id the client
+  // polls. Async because a scrape can outlast the serverless timeout.
+  scrapeMapsStart: protectedProcedure
+    .input(
+      z.object({
+        search: z.string().trim().min(1).max(120),
+        location: z.string().trim().min(1).max(120),
+        limit: z.number().int().min(1).max(1000).optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      if (!outscraperConfigured()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Outscraper is not configured." });
+      }
+      try {
+        const run = await startMapsRun(input);
+        return { runId: run.runId, status: run.status };
+      } catch (e: any) {
+        throw new TRPCError({ code: "BAD_GATEWAY", message: e?.message || "Scrape failed to start." });
+      }
+    }),
+
+  // Poll a running Maps scrape. Returns a normalized status string
+  // (SUCCEEDED / RUNNING / FAILED) so the scrape modal can reuse BBB logic.
+  scrapeMapsPoll: protectedProcedure
+    .input(z.object({ runId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      if (!outscraperConfigured()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Outscraper is not configured." });
+      }
+      const run = await getMapsRun(input.runId);
+      return { status: normalizeStatus(run.status) };
+    }),
+
+  // Pull results from a finished Maps scrape and import them as a new session,
+  // capped at `max` rows. Mirrors the BBB import so dedup / Twilio / export all
+  // work unchanged.
+  scrapeMapsImport: protectedProcedure
+    .input(
+      z.object({
+        runId: z.string().min(1),
+        max: z.number().int().min(1).max(1000),
+        fileName: z.string().max(512),
+        nicheOnly: z.boolean().optional().default(true),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!outscraperConfigured()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Outscraper is not configured." });
+      }
+      const run = await getMapsRun(input.runId);
+      if (!run.done) {
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: "Scrape isn't finished yet — give it a moment and try again.",
+        });
+      }
+      if (run.items.length === 0) {
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: "Google Maps returned no results for that search. Try a broader keyword or location.",
+        });
+      }
+      const kept = input.nicheOnly ? run.items.filter(matchesNicheMaps) : run.items;
+      const dropped = run.items.length - kept.length;
+      const rows = kept
+        .slice(0, input.max)
+        .map(mapMapsItemToRow)
+        .filter((r) => r["Company Name"] || r.Phone);
+      if (rows.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: input.nicheOnly
+            ? `Found ${run.items.length} businesses but none were foundation / waterproofing / crawl space. Try another keyword, or uncheck the niche filter.`
+            : "No usable leads in this scrape.",
+        });
+      }
+      const sessionId = await createSession({
+        ownerOpenId: ctx.user.openId,
+        fileName: input.fileName,
+        headers: [...MAPS_HEADERS],
+        leadCount: rows.length,
+      });
+      await bulkInsertLeads(
+        rows.map((raw, idx) => ({ sessionId, position: idx, raw, qa: defaultQa() })),
+      );
+      return { sessionId, imported: rows.length, dropped };
+    }),
 
   // Kick off a BBB scrape. Returns a run reference the client polls. We start
   // async (not run-sync) because a scrape can outlast the serverless timeout.

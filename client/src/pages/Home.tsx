@@ -12,9 +12,10 @@ import { Dropzone } from "@/components/qualifier/Dropzone";
 import { ExportBar } from "@/components/qualifier/ExportBar";
 import { SessionPicker } from "@/components/qualifier/SessionPicker";
 import { ScrapeModal } from "@/components/qualifier/ScrapeModal";
+import { ScrapeMapsModal } from "@/components/qualifier/ScrapeMapsModal";
 import { FILTER_CHIPS } from "@shared/qualify";
 import { toast } from "sonner";
-import { Loader2, Menu, ScanSearch, Copy as CopyIcon, ShieldCheck, LogIn, LogOut, Globe, X } from "lucide-react";
+import { Loader2, Menu, ScanSearch, Copy as CopyIcon, ShieldCheck, LogIn, LogOut, Globe, MapPin, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type FilterValue = (typeof FILTER_CHIPS)[number];
@@ -34,11 +35,13 @@ export default function Home() {
   const [uploadBusy, setUploadBusy] = useState(false);
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [scrapeOpen, setScrapeOpen] = useState(false);
+  const [scrapeMapsOpen, setScrapeMapsOpen] = useState(false);
 
   const { leads, fileName, headers, isLoading, patchQa, refetch, saveStatus, lastSavedAt, flushAll } = useLeads(sessionId);
 
   const twilioStatusQuery = trpc.leads.twilioStatus.useQuery(undefined, { enabled: isAuthenticated });
   const scrapeStatusQuery = trpc.leads.scrapeStatus.useQuery(undefined, { enabled: isAuthenticated });
+  const outscraperStatusQuery = trpc.leads.outscraperStatus.useQuery(undefined, { enabled: isAuthenticated });
   const createSession = trpc.leads.createSession.useMutation();
   const twilioLookup = trpc.leads.twilioLookup.useMutation();
   const twilioBulk = trpc.leads.twilioBulkLookup.useMutation();
@@ -330,6 +333,18 @@ export default function Home() {
         }}
       />
 
+      <ScrapeMapsModal
+        open={scrapeMapsOpen}
+        onClose={() => setScrapeMapsOpen(false)}
+        onImported={(id) => {
+          setScrapeMapsOpen(false);
+          setSessionId(id);
+          setCurrentLeadId(null);
+          setFilter("All");
+          setQuery("");
+        }}
+      />
+
       {!sessionId ? (
         <div>
           <TopBar user={user} exportBar={null} tools={null} onMenu={null} />
@@ -345,6 +360,16 @@ export default function Home() {
             >
               <Globe className="h-4 w-4" />
               {scrapeStatusQuery.data?.configured ? "Scrape leads from BBB" : "BBB scraper not configured"}
+            </button>
+            <button
+              onClick={() => setScrapeMapsOpen(true)}
+              disabled={!outscraperStatusQuery.data?.configured}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/[0.06] text-sm font-bold transition hover:bg-white/10 active:scale-[0.98] disabled:opacity-40"
+            >
+              <MapPin className="h-4 w-4" />
+              {outscraperStatusQuery.data?.configured
+                ? "Scrape leads from Google Maps"
+                : "Google Maps scraper not configured"}
             </button>
           </div>
         </div>
@@ -383,6 +408,12 @@ export default function Home() {
                     disabled={!scrapeStatusQuery.data?.configured}
                     icon={<Globe className="h-4 w-4" />}
                     label="Scrape BBB"
+                  />
+                  <ToolButton
+                    onClick={() => setScrapeMapsOpen(true)}
+                    disabled={!outscraperStatusQuery.data?.configured}
+                    icon={<MapPin className="h-4 w-4" />}
+                    label="Scrape Maps"
                   />
                   <ToolButton
                     onClick={runTwilioBulk}
