@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Loader2, X, Globe, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ type Phase = "idle" | "running" | "importing";
 
 const DONE = new Set(["SUCCEEDED"]);
 const FAILED = new Set(["FAILED", "ABORTED", "TIMED-OUT", "TIMED_OUT"]);
+const MAX_ATTEMPTS = 4; // the BBB actor randomly returns empty; retry a few times.
 
 export function ScrapeModal({
   open,
@@ -21,12 +22,14 @@ export function ScrapeModal({
 }) {
   const [search, setSearch] = useState("Foundation Repair");
   const [location, setLocation] = useState("");
-  const [distance, setDistance] = useState(10);
+  const [distance, setDistance] = useState(25);
   const [max, setMax] = useState(100);
   const [nicheOnly, setNicheOnly] = useState(true);
   const [phase, setPhase] = useState<Phase>("idle");
+  const [attempt, setAttempt] = useState(0);
   const [runId, setRunId] = useState<string | null>(null);
   const [datasetId, setDatasetId] = useState<string | null>(null);
+  const importingRef = useRef(false); // guard against double-import on repeated polls
 
   const start = trpc.leads.scrapeBbbStart.useMutation();
   const importRun = trpc.leads.scrapeBbbImport.useMutation();
@@ -35,39 +38,68 @@ export function ScrapeModal({
     { enabled: phase === "running" && Boolean(runId), refetchInterval: 4000 },
   );
 
-  // React to poll status changes.
+  async function launch(attemptNum: number) {
+    setPhase("running");
+    setAttempt(attemptNum);
+    importingRef.current = false;
+    const res = await start.mutateAsync({ search: search.trim(), location: location.trim(), distance });
+    setRunId(res.runId);
+    setDatasetId(res.datasetId);
+  }
+
+  function reset() {
+    setPhase("idle");
+    setAttempt(0);
+    setRunId(null);
+    setDatasetId(null);
+    importingRef.current = false;
+  }
+
+  // React to poll status.
   useEffect(() => {
-    if (phase !== "running" || !poll.data) return;
+    if (phase !== "running" || !poll.data || !datasetId) return;
     const status = poll.data.status;
-    if (DONE.has(status) && datasetId) {
+
+    if (DONE.has(status)) {
+      if (importingRef.current) return;
+      importingRef.current = true;
       setPhase("importing");
       importRun
         .mutateAsync({ datasetId, max, nicheOnly, fileName: `BBB · ${search} · ${location}` })
         .then((res) => {
           toast.success(
             res.dropped
-              ? `Imported ${res.imported} foundation leads · dropped ${res.dropped} off-niche.`
+              ? `Imported ${res.imported} leads · dropped ${res.dropped} off-niche.`
               : `Imported ${res.imported} BBB leads.`,
           );
           reset();
           onImported(res.sessionId);
         })
         .catch((e: any) => {
-          toast.error(e?.message || "Import failed.");
-          setPhase("idle");
+          const emptyRun =
+            e?.data?.code === "BAD_GATEWAY" || /no results this run/i.test(e?.message || "");
+          if (emptyRun && attempt < MAX_ATTEMPTS) {
+            toast(`BBB came back empty — retrying (${attempt + 1}/${MAX_ATTEMPTS})…`);
+            launch(attempt + 1).catch(() => {
+              toast.error("Could not restart scrape.");
+              setPhase("idle");
+            });
+          } else {
+            toast.error(e?.message || "Import failed.");
+            setPhase("idle");
+          }
         });
     } else if (FAILED.has(status)) {
-      toast.error(`Scrape ${status.toLowerCase()}. Try again.`);
-      setPhase("idle");
+      if (attempt < MAX_ATTEMPTS) {
+        toast(`Scrape ${status.toLowerCase()} — retrying (${attempt + 1}/${MAX_ATTEMPTS})…`);
+        launch(attempt + 1).catch(() => setPhase("idle"));
+      } else {
+        toast.error(`Scrape ${status.toLowerCase()}. Try again.`);
+        setPhase("idle");
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poll.data, phase, datasetId]);
-
-  function reset() {
-    setPhase("idle");
-    setRunId(null);
-    setDatasetId(null);
-  }
 
   async function run() {
     if (!search.trim() || !location.trim()) {
@@ -75,12 +107,10 @@ export function ScrapeModal({
       return;
     }
     try {
-      const res = await start.mutateAsync({ search: search.trim(), location: location.trim(), distance });
-      setRunId(res.runId);
-      setDatasetId(res.datasetId);
-      setPhase("running");
+      await launch(1);
     } catch (e: any) {
       toast.error(e?.message || "Could not start scrape.");
+      setPhase("idle");
     }
   }
 
@@ -111,9 +141,10 @@ export function ScrapeModal({
             <Loader2 className="h-7 w-7 animate-spin text-primary" />
             <p className="text-sm font-semibold">
               {phase === "running" ? "Scraping BBB…" : "Importing leads…"}
+              {attempt > 1 ? ` (try ${attempt}/${MAX_ATTEMPTS})` : ""}
             </p>
             <p className="text-xs text-muted-foreground">
-              This can take a minute. Keep this window open.
+              BBB can be flaky — if a run is empty I retry automatically. Keep this window open.
             </p>
           </div>
         ) : (
@@ -157,7 +188,7 @@ export function ScrapeModal({
                   min={1}
                   max={100}
                   value={distance}
-                  onChange={(e) => setDistance(Math.max(1, Math.min(100, Number(e.target.value) || 10)))}
+                  onChange={(e) => setDistance(Math.max(1, Math.min(100, Number(e.target.value) || 25)))}
                   className={inputCls}
                 />
               </Field>

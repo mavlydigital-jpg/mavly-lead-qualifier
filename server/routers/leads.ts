@@ -164,12 +164,30 @@ export const leadsRouter = router({
       // Pull extra items when filtering so we can still hit `max` keepers.
       const fetchCount = input.nicheOnly ? Math.min(1000, input.max * 5) : input.max;
       const items = await getDatasetItems(input.datasetId, fetchCount);
+      // The actor occasionally finishes "successfully" with an empty dataset
+      // (BBB anti-bot / transient). Don't create an empty session — tell the
+      // user to re-run.
+      if (items.length === 0) {
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: "BBB returned no results this run (the scraper is sometimes flaky). Tap Run again.",
+        });
+      }
       const kept = input.nicheOnly ? items.filter(matchesNiche) : items;
       const dropped = items.length - kept.length;
       const rows = kept
         .slice(0, input.max)
         .map(mapBbbItemToRow)
         .filter((r) => r["Company Name"] || r.Phone);
+      // Got businesses, but none in-niche after filtering.
+      if (rows.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: input.nicheOnly
+            ? `Found ${items.length} businesses but none were foundation / waterproofing / crawl space. Try another keyword, or uncheck the niche filter.`
+            : "No usable leads in this scrape.",
+        });
+      }
       const sessionId = await createSession({
         ownerOpenId: ctx.user.openId,
         fileName: input.fileName,
