@@ -8,6 +8,8 @@ import {
   mapTwilioLineType,
   normalizePhoneForKey,
   e164Phone,
+  stripHtml,
+  leadCompany,
   PHONE_TYPES,
   FIT_RATINGS,
   FILTER_CHIPS,
@@ -25,6 +27,32 @@ describe("constraint labels", () => {
     expect([...FIT_RATINGS]).toEqual(["Hot", "Warm", "Cold"]);
     expect([...FILTER_CHIPS]).toEqual(["All", "Pending", "Qualified", "Removed"]);
     expect([...GRADE_LABELS]).toEqual(["Hot", "Warm", "Review", "Remove", "Removed"]);
+  });
+});
+
+describe("stripHtml", () => {
+  it("removes <em> highlight tags from scraped names", () => {
+    expect(stripHtml("HG FOUNDATION <em>REPAIR</em>")).toBe("HG FOUNDATION REPAIR");
+  });
+
+  it("decodes common HTML entities", () => {
+    expect(stripHtml("Smith &amp; Sons &#39;Best&#39; Waterproofing")).toBe(
+      "Smith & Sons 'Best' Waterproofing",
+    );
+  });
+
+  it("decodes encoded tags then strips them, and collapses whitespace", () => {
+    expect(stripHtml("Acme   &lt;b&gt;Basement&lt;/b&gt;   Co")).toBe("Acme Basement Co");
+  });
+
+  it("leaves clean values and casing untouched", () => {
+    expect(stripHtml("ABC Foundation Repair")).toBe("ABC Foundation Repair");
+    expect(stripHtml("")).toBe("");
+  });
+
+  it("cleans the company name read off a lead", () => {
+    const lead = makeLead(1, { "Company Name": "HG FOUNDATION <em>REPAIR</em>" });
+    expect(leadCompany(lead)).toBe("HG FOUNDATION REPAIR");
   });
 });
 

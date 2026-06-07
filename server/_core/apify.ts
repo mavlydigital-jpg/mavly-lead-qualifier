@@ -1,4 +1,5 @@
 import { ENV } from "./env";
+import { stripHtml } from "@shared/qualify";
 
 // BBB listings scraper: takes a keyword + location and returns business
 // listings with phone (often the owner's number), address, rating, and
@@ -100,15 +101,17 @@ export function matchesNiche(item: any): boolean {
 
 export function mapBbbItemToRow(item: any): Record<string, string> {
   const phone = Array.isArray(item?.phone) ? item.phone[0] : item?.phone || "";
-  const categories = Array.isArray(item?.categories) ? item.categories.join(", ") : "";
+  const categories = stripHtml(
+    Array.isArray(item?.categories) ? item.categories.join(", ") : "",
+  );
   const accredited =
     item?.accreditationStatus || (item?.bbbMember ? "Accredited" : "");
   const profile = item?.reportUrl ? `https://www.bbb.org${item.reportUrl}` : "";
   return {
-    "Company Name": String(item?.businessName || "").trim(),
+    "Company Name": stripHtml(String(item?.businessName || "").trim()),
     Phone: String(phone || "").trim(),
-    City: String(item?.city || "").trim(),
-    State: String(item?.state || "").trim(),
+    City: stripHtml(String(item?.city || "").trim()),
+    State: stripHtml(String(item?.state || "").trim()),
     Category: categories,
     "BBB Rating": String(item?.rating || "").trim(),
     Accredited: String(accredited || "").trim(),

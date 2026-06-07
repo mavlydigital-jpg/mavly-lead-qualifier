@@ -79,17 +79,61 @@ export function migrateQa(partial: Partial<LeadQa> | null | undefined): LeadQa {
   return { ...defaultQa(), ...(partial || {}) };
 }
 
+// Named HTML entities we actually see in scraped lead data.
+const HTML_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  ndash: "-",
+  mdash: "-",
+  hellip: "...",
+};
+
+/**
+ * Strip HTML markup from a raw field value.
+ *
+ * BBB (and some CSV exports) wrap matched search terms in <em>…</em> highlight
+ * tags and emit HTML entities. Those tags would flow straight into the GHL
+ * import, so we remove tags, decode common entities, and collapse whitespace.
+ * Casing is intentionally left untouched.
+ */
+export function stripHtml(value: string): string {
+  if (!value || (value.indexOf("<") === -1 && value.indexOf("&") === -1)) {
+    return value;
+  }
+  return value
+    // Decode entities first so any encoded tags (&lt;em&gt;) become real tags
+    // and then get removed by the tag pass below.
+    .replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, body: string) => {
+      if (body[0] === "#") {
+        const code =
+          body[1] === "x" || body[1] === "X"
+            ? parseInt(body.slice(2), 16)
+            : parseInt(body.slice(1), 10);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      }
+      const named = HTML_ENTITIES[body.toLowerCase()];
+      return named !== undefined ? named : match;
+    })
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // --- Field accessors against raw CSV columns ---
 function findField(lead: LeadRecord, names: string[]): string {
   const raw = lead.raw || {};
   const lowered = Object.entries(raw).map(([k, v]) => [k, k.toLowerCase(), v] as const);
   for (const target of names) {
     const exact = Object.keys(raw).find((k) => k === target);
-    if (exact && raw[exact]) return raw[exact];
+    if (exact && raw[exact]) return stripHtml(raw[exact]);
   }
   for (const target of names) {
     const found = lowered.find(([, kl]) => kl.includes(target.toLowerCase()));
-    if (found) return raw[found[0]] || "";
+    if (found) return stripHtml(raw[found[0]] || "");
   }
   return "";
 }
