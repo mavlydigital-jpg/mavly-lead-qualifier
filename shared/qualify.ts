@@ -10,6 +10,11 @@ export type LeadQa = {
   twilioLineType: string;
   twilioCarrier: string;
   twilioEvidence: string;
+  // Line-type data pulled from Outscraper's Phone Numbers Enricher at scrape
+  // time. Kept separate from the twilio* fields so the two sources never clobber
+  // each other — Outscraper pre-fills on import, Twilio is an optional recheck.
+  outscraperLineType: string;
+  outscraperCarrier: string;
   runningAds: "Yes" | "No" | "Unknown";
   googleActiveAdCount: string;
   googleAdFormats: string;
@@ -54,6 +59,8 @@ export function defaultQa(): LeadQa {
     twilioLineType: "",
     twilioCarrier: "",
     twilioEvidence: "",
+    outscraperLineType: "",
+    outscraperCarrier: "",
     runningAds: "Unknown",
     googleActiveAdCount: "",
     googleAdFormats: "",
@@ -254,6 +261,21 @@ export function mapTwilioLineType(lineType = ""): LeadQa["phoneType"] {
   if (value.includes("landline")) return "Landline";
   if (value.includes("fixed")) return "Landline";
   if (value.includes("toll")) return "Toll-free";
+  return "Unknown";
+}
+
+// Maps Outscraper's Phone Numbers Enricher `carrier_type` string
+// (mobile / landline / voip / tollfree / ...) to our phoneType bucket. Kept
+// separate from mapTwilioLineType so the Twilio path stays untouched, though the
+// vocabularies overlap.
+export function mapCarrierTypeToPhoneType(carrierType = ""): LeadQa["phoneType"] {
+  const value = String(carrierType || "").toLowerCase();
+  if (value.includes("mobile") || value.includes("cell") || value.includes("wireless"))
+    return "Mobile";
+  if (value.includes("voip")) return "VoIP";
+  if (value.includes("toll")) return "Toll-free";
+  if (value.includes("landline") || value.includes("fixed") || value.includes("residential"))
+    return "Landline";
   return "Unknown";
 }
 

@@ -173,7 +173,7 @@ export function QualifyPanel({
         {/* Qualification sections */}
         <GlassCard className="flex flex-col gap-3 rounded-[28px] p-4">
           {/* Phone */}
-          <Section title="Phone" hint="Twilio line-type">
+          <Section title="Phone" hint="Outscraper at scrape · Twilio recheck">
             <Segmented
               options={PHONE_TYPES as unknown as string[]}
               value={lead.qa.phoneType}
@@ -195,7 +195,17 @@ export function QualifyPanel({
               </button>
               <div className="rounded-[18px] border border-white/[0.08] bg-white/[0.05] p-2.5">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Evidence</div>
-                <div className="mt-0.5 line-clamp-2 text-xs">{lead.qa.twilioEvidence || "No lookup yet"}</div>
+                <div className="mt-0.5 line-clamp-2 text-xs">
+                  {lead.qa.twilioEvidence ||
+                    (lead.qa.outscraperLineType
+                      ? [
+                          `Outscraper: ${lead.qa.outscraperLineType}`,
+                          lead.qa.outscraperCarrier,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                      : "No lookup yet")}
+                </div>
               </div>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">

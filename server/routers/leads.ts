@@ -40,6 +40,7 @@ import {
   normalizeStatus,
   mapMapsItemToRow,
   matchesNicheMaps,
+  qaFromMapsItem,
   MAPS_HEADERS,
 } from "../_core/outscraper";
 
@@ -188,10 +189,13 @@ export const leadsRouter = router({
       }
       const kept = input.nicheOnly ? run.items.filter(matchesNicheMaps) : run.items;
       const dropped = run.items.length - kept.length;
-      const rows = kept
+      // Keep each item paired with its mapped row so the phone enrichment
+      // (carrier type) can seed the lead's QA at import time.
+      const prepared = kept
         .slice(0, input.max)
-        .map(mapMapsItemToRow)
-        .filter((r) => r["Company Name"] || r.Phone);
+        .map((item) => ({ row: mapMapsItemToRow(item), item }))
+        .filter(({ row }) => row["Company Name"] || row.Phone);
+      const rows = prepared.map(({ row }) => row);
       if (rows.length === 0) {
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -207,7 +211,14 @@ export const leadsRouter = router({
         leadCount: rows.length,
       });
       await bulkInsertLeads(
-        rows.map((raw, idx) => ({ sessionId, position: idx, raw, qa: defaultQa() })),
+        prepared.map(({ row, item }, idx) => ({
+          sessionId,
+          position: idx,
+          raw: row,
+          // Seed QA from the Outscraper phone enrichment so leads land
+          // pre-classified (Mobile → SMS, VoIP/Landline → call).
+          qa: { ...defaultQa(), ...qaFromMapsItem(item) },
+        })),
       );
       return { sessionId, imported: rows.length, dropped };
     }),

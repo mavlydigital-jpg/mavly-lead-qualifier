@@ -166,6 +166,8 @@ function qaExportValues(lead: LeadRecord): Record<string, unknown> {
     "QA Twilio Line Type": lead.qa.twilioLineType,
     "QA Twilio Carrier": lead.qa.twilioCarrier,
     "QA Twilio Evidence": lead.qa.twilioEvidence,
+    "QA Outscraper Line Type": lead.qa.outscraperLineType,
+    "QA Outscraper Carrier": lead.qa.outscraperCarrier,
     "QA Google Ads": lead.qa.runningAds,
     "QA Meta Ads": lead.qa.metaAds,
     "QA GBP Score": lead.qa.gbpScore,

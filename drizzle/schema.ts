@@ -66,6 +66,9 @@ export type LeadQa = {
   twilioLineType: string;
   twilioCarrier: string;
   twilioEvidence: string;
+  // Outscraper Phone Numbers Enricher line-type data, captured at scrape time.
+  outscraperLineType: string;
+  outscraperCarrier: string;
   runningAds: "Yes" | "No" | "Unknown";
   googleActiveAdCount: string;
   googleAdFormats: string;
